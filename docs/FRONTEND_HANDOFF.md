@@ -340,8 +340,8 @@ Response:
     "dataHash": "0xde47a154...",
     "rationaleHash": "0x1a7723...",
     "metricsHash": "0x...",
-    "txHash": "0xDemoTxHashReplaceAfterMantleDeploy",
-    "explorerUrl": "https://explorer.sepolia.mantle.xyz/"
+    "txHash": "0xabf8c2bf714512d201c5b19927017806e0213079ab2ed0c045239d0fecec27df",
+    "explorerUrl": "https://explorer.sepolia.mantle.xyz/tx/0xabf8c2bf714512d201c5b19927017806e0213079ab2ed0c045239d0fecec27df"
   }
 }
 ```
@@ -362,7 +362,7 @@ Frontend proof page should show:
 - Tx hash.
 - Explorer link.
 
-Current `txHash` is a placeholder until contract write integration is connected.
+Current backend demo data may still return local proof hashes, but the deployed contract layer already has one seeded decision/outcome transaction for the public demo.
 
 ---
 
@@ -536,6 +536,36 @@ Contract repo:
 
 ```txt
 https://github.com/fabian4819/Credora-Contract
+```
+
+Network:
+
+```txt
+Mantle Sepolia
+Chain ID: 5003
+RPC: https://rpc.sepolia.mantle.xyz
+Explorer: https://explorer.sepolia.mantle.xyz
+```
+
+Verified deployment:
+
+```txt
+AgentPassport: 0x40A9cB62D2a02189be10eC4657ae02B2c235174e
+SeasonManager: 0xC425c96B30BF8a9190E7A273D990a6a8B6F49C3b
+DecisionLogger: 0x2dFf6D5eB709b368df0c11bd80209eB92591658c
+OutcomeRegistry: 0x67479A2F63ecAc78fb52D696df7D7455e2347983
+ReputationEngine: 0xc84D1e8FECaDa44487242E5D855AEE7F752A12EA
+```
+
+All contracts are verified on Sourcify with `exact_match`.
+
+Seeded proof transactions:
+
+```txt
+DecisionSubmitted: https://explorer.sepolia.mantle.xyz/tx/0xabf8c2bf714512d201c5b19927017806e0213079ab2ed0c045239d0fecec27df
+OutcomeSubmitted: https://explorer.sepolia.mantle.xyz/tx/0x20275306eeaa6b41f20026febbdd62492f982b54dd0425af2721ec337ba0c0fc
+SeasonScoreSubmitted: https://explorer.sepolia.mantle.xyz/tx/0x2d1f884d7dfa156880f2ea7d0831037d327add49417080203af35b3833fa4ba7
+SeasonRankSubmitted: https://explorer.sepolia.mantle.xyz/tx/0x1a0ddfccc6f6cb33f39b18bc4ecf92be746f998ed0f12814429493115ed6a9ef
 ```
 
 Current contracts:
@@ -855,11 +885,20 @@ Contract fields are `bytes32`, so frontend should treat these as hex strings.
 
 Current MVP:
 
-- Backend writes to MongoDB, not contracts yet.
-- `txHash` is still placeholder.
-- Contract deployment address is not configured yet.
+- Backend writes to MongoDB for the app API.
+- Contract layer is deployed, verified, and seeded on Mantle Sepolia.
+- Backend contract write integration is not wired into `POST /api/agents/run` yet.
+- Demo API proof hashes and deployed seed proof are currently separate demo flows.
 - One active season only.
 - Demo agents only.
+
+Recommended frontend integration for the hackathon:
+
+```txt
+Use backend API as the main data source.
+Use contract/explorer links for proof visibility.
+Only add direct wallet/contract calls later for register, join season, or claim flows.
+```
 
 Next integration step:
 
@@ -870,4 +909,3 @@ Backend POST /api/agents/run
   -> submitOutcome to OutcomeRegistry
   -> update proof page with real explorer link
 ```
-
