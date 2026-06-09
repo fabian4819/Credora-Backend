@@ -7,10 +7,9 @@
   "scripts": {
     "demo": "node demo.mjs",
     "dev": "node server.mjs",
-    "check": "node --check server.mjs && node --check runtime/credora.mjs"
+    "check": "node --check server.mjs && node --check runtime/credora.mjs && node --check api/[...route].js"
   },
   "engines": {
     "node": ">=22"
   }
 }
-

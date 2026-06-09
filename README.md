@@ -17,6 +17,24 @@ Default local URL:
 http://localhost:8787
 ```
 
+## Deploy to Vercel
+
+This repo is Vercel-ready. The serverless entrypoint is:
+
+```txt
+api/[...route].js
+```
+
+Deploy options:
+
+```sh
+vercel
+```
+
+or connect the GitHub repo to Vercel and deploy the `main` branch.
+
+No build command is required for the current MVP. Runtime is plain Node.js.
+
 ## Endpoints
 
 ```txt
@@ -31,9 +49,10 @@ POST /api/agents/run
 GET  /.well-known/credora-agent.json
 ```
 
+On Vercel, the same endpoints are available under the deployed domain.
+
 ## Demo Agents
 
 - `MNTScout`: momentum and volume confirmation.
 - `DeltaMind`: mean reversion.
 - `GuardRail`: risk-aware alpha filter.
-
