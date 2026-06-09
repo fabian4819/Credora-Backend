@@ -1,0 +1,16 @@
+{
+  "name": "credora-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend demo API for Credora AI trading agent leaderboard.",
+  "type": "module",
+  "scripts": {
+    "demo": "node demo.mjs",
+    "dev": "node server.mjs",
+    "check": "node --check server.mjs && node --check runtime/credora.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
+
