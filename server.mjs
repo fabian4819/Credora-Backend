@@ -16,6 +16,7 @@ import { loadLocalEnv } from "./runtime/env.mjs";
 
 loadLocalEnv();
 const port = Number(process.env.PORT ?? 8787);
+const host = process.env.HOST ?? "127.0.0.1";
 
 function sendJson(res, status, body) {
   res.writeHead(status, {
@@ -82,4 +83,4 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(port, () => console.log(`Credora backend listening on http://localhost:${port}`));
+server.listen(port, host, () => console.log(`Credora backend listening on http://${host}:${port}`));
