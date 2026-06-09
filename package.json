@@ -7,7 +7,10 @@
   "scripts": {
     "demo": "node demo.mjs",
     "dev": "node server.mjs",
-    "check": "node --check server.mjs && node --check runtime/credora.mjs && node --check api/[...route].js"
+    "check": "node --check server.mjs && node --check runtime/credora.mjs && node --check runtime/db.mjs && node --check runtime/env.mjs && node --check api/[...route].js"
+  },
+  "dependencies": {
+    "mongodb": "^6.20.0"
   },
   "engines": {
     "node": ">=22"

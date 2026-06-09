@@ -35,6 +35,17 @@ or connect the GitHub repo to Vercel and deploy the `main` branch.
 
 No build command is required for the current MVP. Runtime is plain Node.js.
 
+Required Vercel environment variables:
+
+```txt
+MONGODB_URI=mongodb+srv://...
+MONGODB_DB=credora
+```
+
+Local `.env` can use the same keys. Do not commit `.env`.
+
+The API automatically seeds the demo season, agents, decisions, outcomes, and leaderboard snapshot into MongoDB if the database is empty. If MongoDB is not configured or the driver is unavailable, the API falls back to in-memory demo data.
+
 ## Endpoints
 
 ```txt
