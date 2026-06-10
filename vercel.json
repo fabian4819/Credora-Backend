@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "builds": [
+    {
+      "src": "api/[...route].js",
+      "use": "@vercel/node"
+    }
+  ],
   "functions": {
     "api/[...route].js": {
       "memory": 256,
@@ -7,9 +13,8 @@
     }
   },
   "rewrites": [
-    {
-      "source": "/.well-known/credora-agent.json",
-      "destination": "/api/discovery"
-    }
+    { "source": "/", "destination": "/api/health" },
+    { "source": "/.well-known/credora-agent.json", "destination": "/api/discovery" },
+    { "source": "/(.*)", "destination": "/api/$1" }
   ]
 }

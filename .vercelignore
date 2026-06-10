@@ -1,0 +1,4 @@
+server.mjs
+demo.mjs
+.env
+*.log
