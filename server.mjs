@@ -73,6 +73,7 @@ const server = createServer(async (nodeReq, nodeRes) => {
 
   const req = {
     method: nodeReq.method,
+    url: nodeReq.url,
     query: { route: routePath.split("/").filter(Boolean) },
     body: await readJsonBody(nodeReq)
   };
