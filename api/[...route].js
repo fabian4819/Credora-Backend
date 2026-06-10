@@ -36,9 +36,11 @@ function ensureSeeded() {
 }
 
 function setCors(res) {
-  res.setHeader("access-control-allow-origin", "*");
-  res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
-  res.setHeader("access-control-allow-headers", "Content-Type");
+  if (typeof res.setHeader === "function") {
+    res.setHeader("access-control-allow-origin", "*");
+    res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+    res.setHeader("access-control-allow-headers", "Content-Type");
+  }
 }
 
 function send(res, status, body) {

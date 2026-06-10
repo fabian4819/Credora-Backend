@@ -3,6 +3,4 @@ dist/
 *.env
 .env
 
-server.mjs
-demo.mjs
 .vercel
