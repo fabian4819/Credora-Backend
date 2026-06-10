@@ -63,8 +63,13 @@ export default async function handler(req, res) {
         ok: true,
         service: "credora-backend",
         season: season.id,
-        database: db ? "mongodb" : "memory"
+        database: db ? "mongodb" : "memory",
+        version: "2.2-debug"
       });
+    }
+
+    if (req.method === "GET" && path === "/debug") {
+      return send(res, 200, { path, route, method: req.method });
     }
 
     if (req.method === "GET" && path === "/status") {
