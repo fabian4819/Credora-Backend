@@ -14,7 +14,9 @@ let _snapshots = null;
 
 async function fetchPrices() {
   const ids = TOKEN_MAP.map((t) => t.coingeckoId).join(",");
-  const url = `${COINGECKO_BASE}/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true`;
+  const apiKey = process.env.COINGECKO_API_KEY;
+  let url = `${COINGECKO_BASE}/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true`;
+  if (apiKey) url += `&x_cg_demo_api_key=${apiKey}`;
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
