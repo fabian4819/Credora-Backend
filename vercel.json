@@ -2,7 +2,6 @@
   "version": 2,
   "functions": {
     "api/[...route].js": {
-      "runtime": "nodejs22.x",
       "memory": 256,
       "maxDuration": 30
     }
