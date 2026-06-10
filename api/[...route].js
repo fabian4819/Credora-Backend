@@ -1,14 +1,19 @@
 import {
   agents,
   calculateOutcome,
+  dataSources,
   decisions,
   getSnapshot,
   leaderboard,
+  normalizeTrackRecord,
   outcomes,
   proof,
   runAgent,
   season,
-  seed
+  seed,
+  strategyAccountProof,
+  strategyAccounts,
+  upsertStrategyAccount
 } from "../runtime/credora.mjs";
 import { getDb, seedMongoIfEmpty } from "../runtime/db.mjs";
 import { loadLocalEnv } from "../runtime/env.mjs";
@@ -23,7 +28,7 @@ function send(res, status, body) {
 async function getReadyDb() {
   const db = await getDb();
   if (!db) return undefined;
-  await seedMongoIfEmpty({ agents, season, decisions, outcomes, leaderboard: leaderboard() });
+  await seedMongoIfEmpty({ agents, season, decisions, outcomes, leaderboard: leaderboard(), strategyAccounts });
   return db;
 }
 
@@ -69,15 +74,107 @@ export default async function handler(req, res) {
 
     if (req.method === "GET" && path === "/leaderboard") {
       if (db) {
+        const importedAccounts = await db.collection("strategy_accounts").find({}, { projection: { _id: 0 } }).toArray();
+        const importedScores = importedAccounts.map((record) => ({
+          agentId: record.id,
+          agentName: record.displayName,
+          entryType: record.accountType,
+          source: record.sourcePlatform,
+          verificationLevel: record.verificationLevel,
+          period: record.period,
+          markets: record.markets,
+          decisions: record.metrics?.tradeCount ?? 0,
+          accuracy: record.metrics?.winRatePct ?? 0,
+          roiPct: record.metrics?.roiPct ?? 0,
+          consistency: record.metrics?.consistencyPct ?? 0,
+          avgRisk: record.metrics?.maxDrawdownPct ?? 0,
+          credoraScore: record.credoraScore ?? 0,
+          dataHash: record.dataHash,
+          sourceProofUrl: record.sourceProofUrl
+        }));
         const snapshot = await db
           .collection("leaderboard_snapshots")
           .find({ seasonId: season.id }, { projection: { _id: 0 } })
           .sort({ computedAt: -1 })
           .limit(1)
           .next();
-        return send(res, 200, { season, leaderboard: snapshot?.leaderboard ?? leaderboard() });
+        const demoRows = (snapshot?.leaderboard ?? leaderboard())
+          .filter((row) => row.entryType !== "observed_strategy_account" && row.entryType !== "verified_agent")
+          .map((row) => ({
+            entryType: "demo_agent",
+            source: "demo",
+            verificationLevel: "demo_generated",
+            ...row
+          }));
+        const rows = [...demoRows, ...importedScores]
+          .sort((a, b) => b.credoraScore - a.credoraScore)
+          .map((row, index) => ({ ...row, rank: index + 1 }));
+        return send(res, 200, { season, leaderboard: rows });
       }
       return send(res, 200, { season, leaderboard: leaderboard() });
+    }
+
+    if (req.method === "GET" && path === "/sources") {
+      return send(res, 200, { sources: dataSources });
+    }
+
+    if (req.method === "GET" && path === "/strategy-accounts") {
+      const rows = db
+        ? await db.collection("strategy_accounts").find({}, { projection: { _id: 0 } }).sort({ credoraScore: -1 }).toArray()
+        : strategyAccounts;
+      return send(res, 200, { strategyAccounts: rows });
+    }
+
+    if (req.method === "GET" && path.startsWith("/strategy-accounts/") && path.endsWith("/proof")) {
+      const id = decodeURIComponent(path.replace("/strategy-accounts/", "").replace("/proof", ""));
+      let result = strategyAccountProof(id);
+
+      if (db) {
+        const account = await db.collection("strategy_accounts").findOne({ id }, { projection: { _id: 0 } });
+        if (account) {
+          result = {
+            account,
+            proof: {
+              dataHash: account.dataHash,
+              sourceProofUrl: account.sourceProofUrl,
+              txHashes: account.txHashes ?? [],
+              proofStatus: account.proofStatus,
+              explorerUrls: (account.txHashes ?? []).map((txHash) => `https://explorer.sepolia.mantle.xyz/tx/${txHash}`)
+            }
+          };
+        }
+      }
+
+      return result ? send(res, 200, result) : send(res, 404, { error: "Strategy account not found" });
+    }
+
+    if (req.method === "POST" && path === "/strategy-accounts/import") {
+      const body = typeof req.body === "object" && req.body !== null ? req.body : {};
+      const account = normalizeTrackRecord(body);
+      upsertStrategyAccount(account);
+      const nextLeaderboard = leaderboard();
+
+      if (db) {
+        await db.collection("strategy_accounts").updateOne(
+          { id: account.id },
+          { $set: { ...account, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
+          { upsert: true }
+        );
+        await db.collection("leaderboard_snapshots").insertOne({
+          seasonId: season.id,
+          leaderboard: nextLeaderboard,
+          computedAt: new Date()
+        });
+      }
+
+      return send(res, 201, {
+        strategyAccount: account,
+        proof: {
+          dataHash: account.dataHash,
+          proofStatus: account.proofStatus,
+          sourceProofUrl: account.sourceProofUrl
+        }
+      });
     }
 
     if (req.method === "GET" && path.startsWith("/proof/")) {
@@ -145,6 +242,7 @@ export default async function handler(req, res) {
         services: [
           { type: "leaderboard", endpoint: "/api/leaderboard" },
           { type: "proof", endpoint: "/api/proof/{decisionId}" },
+          { type: "strategy-account-import", endpoint: "/api/strategy-accounts/import" },
           { type: "run-demo-agent", endpoint: "/api/agents/run" }
         ]
       });

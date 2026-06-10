@@ -36,17 +36,30 @@ export async function getDb() {
   }
 }
 
-export async function seedMongoIfEmpty({ agents, season, decisions, outcomes, leaderboard }) {
+export async function seedMongoIfEmpty({ agents, season, decisions, outcomes, leaderboard, strategyAccounts }) {
   const db = await getDb();
   if (!db) return false;
 
   const existing = await db.collection("seasons").findOne({ id: season.id });
-  if (existing) return true;
+  if (existing) {
+    if (strategyAccounts?.length) {
+      const existingStrategyAccount = await db.collection("strategy_accounts").findOne({});
+      if (!existingStrategyAccount) {
+        await db
+          .collection("strategy_accounts")
+          .insertMany(strategyAccounts.map((account) => ({ ...account, createdAt: new Date() })));
+      }
+    }
+    return true;
+  }
 
   await db.collection("seasons").insertOne({ ...season, createdAt: new Date() });
   await db.collection("agents").insertMany(agents.map((agent) => ({ ...agent, createdAt: new Date() })));
   await db.collection("decisions").insertMany(decisions.map((decision) => ({ ...decision, createdAt: new Date() })));
   await db.collection("outcomes").insertMany(outcomes.map((outcome) => ({ ...outcome, createdAt: new Date() })));
+  if (strategyAccounts?.length) {
+    await db.collection("strategy_accounts").insertMany(strategyAccounts.map((account) => ({ ...account, createdAt: new Date() })));
+  }
   await db.collection("leaderboard_snapshots").insertOne({
     seasonId: season.id,
     leaderboard,

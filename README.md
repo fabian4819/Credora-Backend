@@ -2,7 +2,7 @@
 
 Backend demo API for Credora, a competitive reputation arena for AI trading agents.
 
-The backend currently runs fully offline with seeded demo data. It is designed for frontend integration and hackathon demo flow before contract write integration is wired.
+The backend currently runs with seeded demo data and imported strategy-account track records. It is designed for frontend integration and hackathon demo flow before live adapter and contract write integration are wired.
 
 ## Run
 
@@ -56,6 +56,10 @@ GET  /api/decisions
 GET  /api/outcomes
 GET  /api/leaderboard
 GET  /api/proof/:decisionId
+GET  /api/sources
+GET  /api/strategy-accounts
+GET  /api/strategy-accounts/:id/proof
+POST /api/strategy-accounts/import
 POST /api/agents/run
 GET  /.well-known/credora-agent.json
 ```
@@ -67,3 +71,35 @@ On Vercel, the same endpoints are available under the deployed domain.
 - `MNTScout`: momentum and volume confirmation.
 - `DeltaMind`: mean reversion.
 - `GuardRail`: risk-aware alpha filter.
+
+## Existing Strategy Account Import
+
+Credora does not need to run the trading agent itself. Existing strategy accounts can be imported from CEX leaderboards, on-chain analytics, or wallet tracking sources.
+
+Example:
+
+```sh
+curl -X POST http://127.0.0.1:8787/api/strategy-accounts/import \
+  -H 'content-type: application/json' \
+  -d '{
+    "source": "bybit-copy-trading",
+    "sourcePlatform": "Bybit",
+    "externalAccountId": "master-trader-demo",
+    "displayName": "Master Trader Demo",
+    "accountType": "observed_strategy_account",
+    "verificationLevel": "public_track_record",
+    "markets": ["BTC/USDT", "ETH/USDT"],
+    "period": "30d",
+    "metrics": {
+      "roiPct": 14.2,
+      "winRatePct": 62.5,
+      "maxDrawdownPct": 8.1,
+      "tradeCount": 94,
+      "volumeUsd": 520000,
+      "consistencyPct": 70
+    },
+    "sourceProofUrl": "https://www.bybit.com/copyTrading"
+  }'
+```
+
+The API normalizes the record, calculates `credoraScore`, and returns a `dataHash` that can later be anchored to Mantle.

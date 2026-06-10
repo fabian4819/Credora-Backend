@@ -26,11 +26,11 @@ All backend API endpoints are under:
 
 ```txt
 1. Show current season
-2. Show registered agents
+2. Show registered agents and imported strategy accounts
 3. Show leaderboard
 4. User opens agent profile
-5. User opens decision proof page
-6. Demo action: run agent
+5. User opens decision proof or strategy-account proof page
+6. Demo action: import existing track record or run demo agent
 7. Leaderboard updates
 ```
 
@@ -132,7 +132,7 @@ Important fields:
 
 ### GET /api/leaderboard
 
-Returns season leaderboard.
+Returns season leaderboard, including demo agents and imported strategy accounts.
 
 Response:
 
@@ -150,6 +150,9 @@ Response:
     {
       "agentId": "3",
       "agentName": "GuardRail",
+      "entryType": "demo_agent",
+      "source": "demo",
+      "verificationLevel": "demo_generated",
       "decisions": 1,
       "accuracy": 100,
       "roiPct": 0,
@@ -174,6 +177,9 @@ Recommended columns:
 | --- | --- |
 | Rank | `rank` |
 | Agent | `agentName` |
+| Type | `entryType` |
+| Source | `source` |
+| Verification | `verificationLevel` |
 | Decisions | `decisions` |
 | Accuracy | `accuracy` |
 | ROI | `roiPct` |
@@ -192,6 +198,168 @@ Example:
 ```txt
 86.7
 ```
+
+---
+
+### GET /api/sources
+
+Returns supported source adapters for existing agent/strategy track records.
+
+Response:
+
+```json
+{
+  "sources": [
+    {
+      "id": "bybit-copy-trading",
+      "name": "Bybit Copy Trading / Leaderboard",
+      "sourceType": "cex",
+      "verificationMode": "public_leaderboard_or_read_only_api",
+      "requiredProof": ["sourceProofUrl", "period", "roiPct", "winRatePct", "tradeCount", "maxDrawdownPct"]
+    }
+  ]
+}
+```
+
+Frontend usage:
+
+- Import form source selector.
+- Explain which evidence is required for each source.
+
+---
+
+### GET /api/strategy-accounts
+
+Returns imported existing trading agents, bots, smart wallets, or strategy accounts.
+
+Response:
+
+```json
+{
+  "strategyAccounts": [
+    {
+      "id": "bybit-copy-trading:bybit-master-alpha-30d-demo",
+      "source": "bybit-copy-trading",
+      "sourceType": "cex",
+      "sourcePlatform": "Bybit",
+      "externalAccountId": "bybit-master-alpha-30d-demo",
+      "displayName": "AlphaMaster 30D",
+      "accountType": "observed_strategy_account",
+      "verificationLevel": "public_track_record",
+      "markets": ["BTC/USDT", "ETH/USDT", "MNT/USDT"],
+      "period": "30d",
+      "metrics": {
+        "roiPct": 18.4,
+        "winRatePct": 64.2,
+        "maxDrawdownPct": 7.8,
+        "tradeCount": 126,
+        "volumeUsd": 820000,
+        "consistencyPct": 71
+      },
+      "credoraScore": 75.62,
+      "dataHash": "0x..."
+    }
+  ]
+}
+```
+
+Account type values:
+
+```txt
+verified_agent
+observed_strategy_account
+imported_public_account
+```
+
+Frontend usage:
+
+- Strategy account directory.
+- Agent/account profile page.
+- Source proof page.
+
+---
+
+### GET /api/strategy-accounts/:id/proof
+
+Returns proof data for an imported track record.
+
+Example:
+
+```txt
+GET /api/strategy-accounts/bybit-copy-trading%3Abybit-master-alpha-30d-demo/proof
+```
+
+Response:
+
+```json
+{
+  "account": {
+    "id": "bybit-copy-trading:bybit-master-alpha-30d-demo",
+    "displayName": "AlphaMaster 30D",
+    "credoraScore": 75.62,
+    "dataHash": "0x..."
+  },
+  "proof": {
+    "dataHash": "0x...",
+    "sourceProofUrl": "https://www.bybit.com/copyTrading",
+    "txHashes": [],
+    "proofStatus": "offchain_verified_pending_anchor",
+    "explorerUrls": []
+  }
+}
+```
+
+---
+
+### POST /api/strategy-accounts/import
+
+Imports an existing account track record and recalculates Credora Score.
+
+Request:
+
+```json
+{
+  "source": "bybit-copy-trading",
+  "sourcePlatform": "Bybit",
+  "externalAccountId": "master-trader-demo",
+  "displayName": "Master Trader Demo",
+  "accountType": "observed_strategy_account",
+  "verificationLevel": "public_track_record",
+  "markets": ["BTC/USDT", "ETH/USDT"],
+  "period": "30d",
+  "metrics": {
+    "roiPct": 14.2,
+    "winRatePct": 62.5,
+    "maxDrawdownPct": 8.1,
+    "tradeCount": 94,
+    "volumeUsd": 520000,
+    "consistencyPct": 70
+  },
+  "sourceProofUrl": "https://www.bybit.com/copyTrading"
+}
+```
+
+Response:
+
+```json
+{
+  "strategyAccount": {
+    "id": "bybit-copy-trading:master-trader-demo",
+    "credoraScore": 71.3,
+    "dataHash": "0x..."
+  },
+  "proof": {
+    "dataHash": "0x...",
+    "proofStatus": "offchain_verified_pending_anchor",
+    "sourceProofUrl": "https://www.bybit.com/copyTrading"
+  }
+}
+```
+
+After success:
+
+- Refresh `/api/leaderboard`.
+- Link to `/strategy-accounts/:id/proof`.
 
 ---
 
@@ -444,6 +612,7 @@ Use:
 ```txt
 GET /api/season/current
 GET /api/leaderboard
+GET /api/strategy-accounts
 GET /api/decisions
 ```
 
@@ -460,6 +629,7 @@ Use:
 
 ```txt
 GET /api/leaderboard
+GET /api/sources
 ```
 
 Filters to prepare:
@@ -478,6 +648,7 @@ Use:
 
 ```txt
 GET /api/agents
+GET /api/strategy-accounts
 GET /api/decisions
 GET /api/outcomes
 GET /api/leaderboard
@@ -501,6 +672,7 @@ Use:
 
 ```txt
 GET /api/proof/:decisionId
+GET /api/strategy-accounts/:id/proof
 ```
 
 Show:
@@ -515,6 +687,7 @@ Show:
 Use:
 
 ```txt
+POST /api/strategy-accounts/import
 POST /api/agents/run
 ```
 
