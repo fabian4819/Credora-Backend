@@ -68,9 +68,15 @@ async function getReadyDb() {
   }
 }
 
+function normalizeRouteParam(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") return value.split("/").filter(Boolean);
+  return [];
+}
+
 export default async function handler(req, res) {
   ensureSeeded();
-  const route = Array.isArray(req.query.route) ? req.query.route : [];
+  const route = normalizeRouteParam(req.query.route);
   const path = `/${route.join("/")}`;
 
   try {
