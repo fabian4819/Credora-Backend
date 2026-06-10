@@ -347,7 +347,6 @@ export default async function handler(req, res) {
 
       const onChainResult = await Promise.race([
         (async () => {
-          await ensureAgentRegistered(agent.id, agent.name, agent.strategyType);
           const decisionReceipt = await submitDecisionOnChain(decision, agent);
           if (decisionReceipt) {
             decision.onChainTxHash = decisionReceipt.txHash;
@@ -383,7 +382,7 @@ export default async function handler(req, res) {
         new Promise((r) => setTimeout(r, timeoutMs))
       ]);
 
-      return send(res, 201, { decision, outcome, leaderboard: nextLeaderboard });
+      return send(res, 201, { decision, outcome, leaderboard: nextLeaderboard, onChainTimedOut: !onChainResult });
     }
 
     if (req.method === "GET" && path === "/discovery") {

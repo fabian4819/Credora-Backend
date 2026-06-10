@@ -240,9 +240,13 @@ export async function ensureAgentRegistered(backendAgentId, agentName, strategyT
 
 export async function submitDecisionOnChain(decision, agent) {
   if (!hasEnv()) return null;
+  let lastError = null;
   try {
     const walletClient = await getWalletClient();
-    if (!walletClient) return null;
+    if (!walletClient) {
+      lastError = "no wallet client";
+      return null;
+    }
 
     const agentId = BigInt(decision.agentId);
     const account = await getAccount();
