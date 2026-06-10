@@ -86,9 +86,15 @@ function getRequestPath(req) {
   return url.pathname;
 }
 
+function getQuery(req) {
+  const url = new URL(req.url ?? "/", "https://credora.local");
+  return Object.fromEntries(url.searchParams.entries());
+}
+
 export default async function handler(req, res) {
   ensureSeeded();
   const path = getRequestPath(req);
+  req.queryData = { ...req.query, ...getQuery(req) };
 
   try {
     if (req.method === "OPTIONS") {
@@ -139,10 +145,37 @@ export default async function handler(req, res) {
       return send(res, 200, { agents: rows });
     }
 
+    if (req.method === "GET" && path.startsWith("/agents/")) {
+      const agentId = path.replace("/agents/", "");
+      const agent = (db ? await db.collection("agents").findOne({ id: agentId }, { projection: { _id: 0 } }) : agents.find((a) => a.id === agentId));
+      if (!agent) return send(res, 404, { error: "Agent not found" });
+      const lb = leaderboard();
+      const score = lb.find((r) => r.agentId === agentId);
+      return send(res, 200, { agent, score: score ?? null });
+    }
+
+    if (req.method === "GET" && path === "/seasons") {
+      const seasons = db
+        ? await db.collection("seasons").find({}, { projection: { _id: 0 } }).sort({ startTime: -1 }).toArray()
+        : [season];
+      return send(res, 200, { seasons });
+    }
+
     if (req.method === "GET" && path === "/decisions") {
       const rows = db
         ? await db.collection("decisions").find({}, { projection: { _id: 0 } }).sort({ createdAt: 1 }).toArray()
         : decisions;
+      const withOutcome = req.queryData?.withOutcome === "1";
+      if (withOutcome) {
+        const outRows = db
+          ? await db.collection("outcomes").find({}, { projection: { _id: 0 } }).toArray()
+          : outcomes;
+        const enriched = rows.map((d) => ({
+          ...d,
+          outcome: outRows.find((o) => o.decisionId === d.id) ?? null
+        }));
+        return send(res, 200, { decisions: enriched });
+      }
       return send(res, 200, { decisions: rows });
     }
 
