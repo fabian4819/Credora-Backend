@@ -48,7 +48,7 @@ async function getLatestBlock() {
   const client = getClient();
   try {
     return await client.getBlockNumber();
-  } catch {
+  } catch (_) {
     return _lastBlock;
   }
 }

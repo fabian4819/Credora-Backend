@@ -5,7 +5,7 @@ async function loadMongoClient() {
   try {
     const mongodb = await import("mongodb");
     return mongodb.MongoClient;
-  } catch {
+  } catch (_) {
     return undefined;
   }
 }

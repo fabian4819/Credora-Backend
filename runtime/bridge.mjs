@@ -93,7 +93,7 @@ async function fetchBybitMetrics() {
         }
       }
     }
-  } catch { /* geoblocked, will fallback */ }
+  } catch (_) { /* geoblocked, will fallback */ }
 
   if (Object.keys(results).length === 0) return null;
 

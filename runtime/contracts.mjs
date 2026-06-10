@@ -173,7 +173,7 @@ function getPublicClient() {
 async function tryRead(promise) {
   try {
     return await promise;
-  } catch {
+  } catch (_) {
     return null;
   }
 }
