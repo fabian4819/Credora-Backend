@@ -3,9 +3,6 @@ name: Deploy to VPS
 on:
   push:
     branches: [main]
-    paths:
-      - 'backend/**'
-      - '!backend/**.md'
 
 jobs:
   deploy:
@@ -23,7 +20,6 @@ jobs:
             set -e
             cd ~/Credora-Backend
             git pull origin main
-            cd backend
             docker compose build --no-cache
             docker compose down
             docker compose up -d
