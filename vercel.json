@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "functions": {
+    "api/[...route].js": {
+      "memory": 256,
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
     {
       "source": "/.well-known/credora-agent.json",
@@ -7,4 +13,3 @@
     }
   ]
 }
-

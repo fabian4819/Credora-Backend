@@ -27,20 +27,31 @@ import { getDb, seedMongoIfEmpty } from "../runtime/db.mjs";
 import { loadLocalEnv } from "../runtime/env.mjs";
 
 loadLocalEnv();
-seed();
+
+const _seeded = { done: false };
+function ensureSeeded() {
+  if (_seeded.done) return;
+  seed();
+  _seeded.done = true;
+}
 
 function send(res, status, body) {
   res.status(status).json(body);
 }
 
 async function getReadyDb() {
-  const db = await getDb();
-  if (!db) return undefined;
-  await seedMongoIfEmpty({ agents, season, decisions, outcomes, leaderboard: leaderboard(), strategyAccounts });
-  return db;
+  try {
+    const db = await getDb();
+    if (!db) return undefined;
+    await seedMongoIfEmpty({ agents, season, decisions, outcomes, leaderboard: leaderboard(), strategyAccounts });
+    return db;
+  } catch {
+    return undefined;
+  }
 }
 
 export default async function handler(req, res) {
+  ensureSeeded();
   const route = Array.isArray(req.query.route) ? req.query.route : [];
   const path = `/${route.join("/")}`;
 
