@@ -1,32 +1,19 @@
-import { loadLocalEnv } from "../runtime/env.mjs";
-import { agents, decisions, leaderboard, outcomes, season, seed } from "../runtime/credora.mjs";
-
-loadLocalEnv();
-
-let _seeded = false;
-function ensureSeeded() {
-  if (_seeded) return;
-  seed();
-  _seeded = true;
-}
-
 function send(res, status, body) {
   res.status(status).json(body);
 }
 
 export default async function handler(req, res) {
-  ensureSeeded();
   const route = Array.isArray(req.query.route) ? req.query.route : [];
   const path = `/${route.join("/")}`;
 
   try {
     if (req.method === "GET" && path === "/health") {
-      return send(res, 200, { ok: true, service: "credora-backend", season: season.id, version: "v3-lite" });
+      return send(res, 200, { ok: true, service: "credora-backend", season: "season-1", version: "bare-minimum" });
     }
 
     if (req.method === "GET" && path === "/status") {
       return send(res, 200, {
-        ok: true, season: season.id, livePrices: false, chainIndexer: false, bridgeActive: false,
+        ok: true, service: "credora-backend", season: "season-1",
         chainId: 5003, mantleExplorer: "https://explorer.sepolia.mantle.xyz",
         contracts: {
           agentPassport: "0x40A9cB62D2a02189be10eC4657ae02B2c235174e",
@@ -37,24 +24,8 @@ export default async function handler(req, res) {
       });
     }
 
-    if (req.method === "GET" && path === "/agents") {
-      return send(res, 200, { agents });
-    }
-
-    if (req.method === "GET" && path === "/leaderboard") {
-      return send(res, 200, { season, leaderboard: leaderboard() });
-    }
-
-    if (req.method === "GET" && path === "/decisions") {
-      return send(res, 200, { decisions });
-    }
-
-    if (req.method === "GET" && path === "/outcomes") {
-      return send(res, 200, { outcomes });
-    }
-
-    return send(res, 404, { error: "Route not found" });
+    return send(res, 404, { error: "Route not found", path });
   } catch (error) {
-    return send(res, 500, { error: error.message, stack: error.stack?.split("\n")?.slice(0, 3) });
+    return send(res, 500, { error: error.message });
   }
 }
