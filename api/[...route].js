@@ -343,10 +343,11 @@ export default async function handler(req, res) {
         });
       }
 
-      send(res, 201, { decision, outcome, leaderboard: nextLeaderboard });
+      const timeoutMs = (process.env.VERCEL ? 18000 : 60000);
 
-      ensureAgentRegistered(agent.id, agent.name, agent.strategyType)
-        .then(async () => {
+      const onChainResult = await Promise.race([
+        (async () => {
+          await ensureAgentRegistered(agent.id, agent.name, agent.strategyType);
           const decisionReceipt = await submitDecisionOnChain(decision, agent);
           if (decisionReceipt) {
             decision.onChainTxHash = decisionReceipt.txHash;
@@ -361,13 +362,10 @@ export default async function handler(req, res) {
               outcome.onChainTxHash = outcomeReceipt.txHash;
               outcome.onChainExplorerUrl = outcomeReceipt.explorerUrl;
             }
-
             const agentScore = nextLeaderboard.find((r) => r.agentId === agent.id);
-            if (agentScore && agentScore.entryType === "demo_agent") {
-              await new Promise((r) => setTimeout(r, 2000));
+            if (agentScore) {
               await submitSeasonScoreOnChain(agent.id, agent.name, agentScore);
             }
-
             if (db) {
               await db.collection("decisions").updateOne(
                 { id: decision.id },
@@ -381,10 +379,11 @@ export default async function handler(req, res) {
               }
             }
           }
-        })
-        .catch((err) => console.warn("Background on-chain write failed:", err.message));
+        })(),
+        new Promise((r) => setTimeout(r, timeoutMs))
+      ]);
 
-      return;
+      return send(res, 201, { decision, outcome, leaderboard: nextLeaderboard });
     }
 
     if (req.method === "GET" && path === "/discovery") {
