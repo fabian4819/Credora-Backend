@@ -3,7 +3,9 @@ import {
   calculateOutcome,
   dataSources,
   decisions,
+  getLiveSnapshot,
   getSnapshot,
+  hasLivePrices,
   leaderboard,
   normalizeTrackRecord,
   outcomes,
@@ -15,6 +17,12 @@ import {
   strategyAccounts,
   upsertStrategyAccount
 } from "../runtime/credora.mjs";
+import {
+  ensureAgentRegistered,
+  submitDecisionOnChain,
+  submitOutcomeOnChain,
+  submitSeasonScoreOnChain
+} from "../runtime/contracts.mjs";
 import { getDb, seedMongoIfEmpty } from "../runtime/db.mjs";
 import { loadLocalEnv } from "../runtime/env.mjs";
 
@@ -45,6 +53,32 @@ export default async function handler(req, res) {
         service: "credora-backend",
         season: season.id,
         database: db ? "mongodb" : "memory"
+      });
+    }
+
+    if (req.method === "GET" && path === "/status") {
+      let bridgeMode = "simulated";
+      try {
+        const bridge = await import("../runtime/bridge.mjs");
+        bridgeMode = bridge.getDataMode();
+      } catch {}
+      return send(res, 200, {
+        ok: true,
+        service: "credora-backend",
+        season: season.id,
+        database: db ? "mongodb" : "memory",
+        livePrices: hasLivePrices(),
+        chainIndexer: Boolean(process.env.MANTLE_RPC_URL),
+        bridgeActive: true,
+        bridgeDataMode: bridgeMode,
+        chainId: 5003,
+        mantleExplorer: "https://explorer.sepolia.mantle.xyz",
+        contracts: {
+          agentPassport: "0x40A9cB62D2a02189be10eC4657ae02B2c235174e",
+          decisionLogger: "0x2dFf6D5eB709b368df0c11bd80209eB92591658c",
+          outcomeRegistry: "0x67479A2F63ecAc78fb52D696df7D7455e2347983",
+          reputationEngine: "0xc84D1e8FECaDa44487242E5D855AEE7F752A12EA"
+        }
       });
     }
 
@@ -189,6 +223,7 @@ export default async function handler(req, res) {
 
         if (decision) {
           const agent = await db.collection("agents").findOne({ id: decision.agentId }, { projection: { _id: 0 } });
+          const hasRealTx = decision.onChainTxHash || outcome?.onChainTxHash;
           result = {
             agent,
             decision,
@@ -197,8 +232,14 @@ export default async function handler(req, res) {
               dataHash: decision.dataHash,
               rationaleHash: decision.rationaleHash,
               metricsHash: outcome?.metricsHash,
-              txHash: "0xDemoTxHashReplaceAfterMantleDeploy",
-              explorerUrl: "https://explorer.sepolia.mantle.xyz/"
+              decisionTxHash: decision.onChainTxHash ?? undefined,
+              outcomeTxHash: outcome?.onChainTxHash ?? undefined,
+              txHash: hasRealTx
+                ? (outcome?.onChainTxHash || decision.onChainTxHash)
+                : "0xDemoTxHashReplaceAfterMantleDeploy",
+              explorerUrl: hasRealTx
+                ? `https://explorer.sepolia.mantle.xyz/tx/${outcome?.onChainTxHash || decision.onChainTxHash}`
+                : "https://explorer.sepolia.mantle.xyz/"
             }
           };
         }
@@ -214,7 +255,7 @@ export default async function handler(req, res) {
         return send(res, 404, { error: "Agent not found" });
       }
 
-      const snapshot = getSnapshot(String(body.market ?? agent.supportedMarkets[0]));
+      const snapshot = getLiveSnapshot(String(body.market ?? agent.supportedMarkets[0]));
       const decision = runAgent(agent, snapshot);
       const outcome = calculateOutcome(decision, snapshot.price);
       decisions.push(decision);
@@ -231,7 +272,48 @@ export default async function handler(req, res) {
         });
       }
 
-      return send(res, 201, { decision, outcome, leaderboard: nextLeaderboard });
+      send(res, 201, { decision, outcome, leaderboard: nextLeaderboard });
+
+      ensureAgentRegistered(agent.id, agent.name, agent.strategyType)
+        .then(async () => {
+          const decisionReceipt = await submitDecisionOnChain(decision, agent);
+          if (decisionReceipt) {
+            decision.onChainTxHash = decisionReceipt.txHash;
+            decision.onChainExplorerUrl = decisionReceipt.explorerUrl;
+            decision.onChainDecisionId = decisionReceipt.onChainDecisionId;
+            const outcomeReceipt = await submitOutcomeOnChain(
+              decisionReceipt.onChainDecisionId,
+              agent.id,
+              outcome
+            );
+            if (outcomeReceipt) {
+              outcome.onChainTxHash = outcomeReceipt.txHash;
+              outcome.onChainExplorerUrl = outcomeReceipt.explorerUrl;
+            }
+
+            const agentScore = nextLeaderboard.find((r) => r.agentId === agent.id);
+            if (agentScore && agentScore.entryType === "demo_agent") {
+              await new Promise((r) => setTimeout(r, 2000));
+              await submitSeasonScoreOnChain(agent.id, agent.name, agentScore);
+            }
+
+            if (db) {
+              await db.collection("decisions").updateOne(
+                { id: decision.id },
+                { $set: { onChainTxHash: decision.onChainTxHash, onChainExplorerUrl: decision.onChainExplorerUrl, onChainDecisionId: decision.onChainDecisionId } }
+              );
+              if (outcome.onChainTxHash) {
+                await db.collection("outcomes").updateOne(
+                  { decisionId: outcome.decisionId },
+                  { $set: { onChainTxHash: outcome.onChainTxHash, onChainExplorerUrl: outcome.onChainExplorerUrl } }
+                );
+              }
+            }
+          }
+        })
+        .catch((err) => console.warn("Background on-chain write failed:", err.message));
+
+      return;
     }
 
     if (req.method === "GET" && path === "/discovery") {

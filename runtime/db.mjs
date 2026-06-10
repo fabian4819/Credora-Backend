@@ -24,7 +24,10 @@ export async function getDb() {
   }
 
   try {
-    cachedClient ??= new MongoClient(process.env.MONGODB_URI);
+    cachedClient ??= new MongoClient(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000
+    });
     await cachedClient.connect();
     cachedDb = cachedClient.db(process.env.MONGODB_DB);
     return cachedDb;

@@ -10,7 +10,8 @@
     "check": "node --check server.mjs && node --check runtime/credora.mjs && node --check runtime/db.mjs && node --check runtime/env.mjs && node --check api/[...route].js"
   },
   "dependencies": {
-    "mongodb": "^6.20.0"
+    "mongodb": "^6.20.0",
+    "viem": "^2.52.2"
   },
   "engines": {
     "node": ">=22"

@@ -305,6 +305,22 @@ export function getSnapshot(market) {
   return snapshot;
 }
 
+let _liveSnapshots = null;
+
+export function setLiveSnapshots(snaps) {
+  if (snaps && snaps.length) _liveSnapshots = snaps;
+}
+
+export function getLiveSnapshot(market) {
+  if (!_liveSnapshots) return getSnapshot(market);
+  const live = _liveSnapshots.find((s) => s.market === market);
+  return live || getSnapshot(market);
+}
+
+export function hasLivePrices() {
+  return Boolean(_liveSnapshots);
+}
+
 export function runAgent(agent, snapshot) {
   const priceMomentum = (snapshot.price - snapshot.price1hAgo) / snapshot.price1hAgo;
   const volumeRatio = snapshot.volume24h / snapshot.volumeBaseline;
@@ -475,15 +491,25 @@ export function proof(decisionId) {
   seed();
   const decision = decisions.find((item) => item.id === decisionId);
   if (!decision) return undefined;
+  const matchingOutcome = outcomes.find((item) => item.decisionId === decisionId);
+  const decisionTxHash = decision.onChainTxHash;
+  const outcomeTxHash = matchingOutcome?.onChainTxHash;
+  const txHash = outcomeTxHash || decisionTxHash || null;
+  const hasRealTx = Boolean(outcomeTxHash || decisionTxHash);
   return {
     agent: agents.find((item) => item.id === decision.agentId),
     decision,
-    outcome: outcomes.find((item) => item.decisionId === decisionId),
+    outcome: matchingOutcome,
     proof: {
       dataHash: decision.dataHash,
       rationaleHash: decision.rationaleHash,
-      txHash: "0xDemoTxHashReplaceAfterMantleDeploy",
-      explorerUrl: "https://explorer.sepolia.mantle.xyz/"
+      metricsHash: matchingOutcome?.metricsHash ?? undefined,
+      decisionTxHash: decisionTxHash ?? undefined,
+      outcomeTxHash: outcomeTxHash ?? undefined,
+      txHash: txHash || (hasRealTx ? undefined : "0xDemoTxHashReplaceAfterMantleDeploy"),
+      explorerUrl: txHash
+        ? `https://explorer.sepolia.mantle.xyz/tx/${txHash}`
+        : "https://explorer.sepolia.mantle.xyz/"
     }
   };
 }
