@@ -1,5 +1,14 @@
-import { createPublicClient, createWalletClient, http, keccak256, stringToHex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+let _viem = null;
+async function getViem() {
+  if (!_viem) {
+    const [core, accounts] = await Promise.all([
+      import("viem"),
+      import("viem/accounts")
+    ]);
+    _viem = { ...core, ...accounts };
+  }
+  return _viem;
+}
 
 const DEPLOYED = {
   agentPassport: "0x40A9cB62D2a02189be10eC4657ae02B2c235174e",
@@ -120,8 +129,9 @@ function toBytes32(hex) {
   return hex.startsWith("0x") ? hex : `0x${hex}`;
 }
 
-function marketHash(market) {
-  return keccak256(stringToHex(market));
+async function marketHash(market) {
+  const v = await getViem();
+  return v.keccak256(v.stringToHex(market));
 }
 
 function hasEnv() {
@@ -135,23 +145,25 @@ let _transport = null;
 
 function getTransport() {
   if (!_transport) {
-    _transport = http(process.env.MANTLE_RPC_URL ?? DEPLOYED.rpcUrl);
+    _transport = getViem().then(v => v.http(process.env.MANTLE_RPC_URL ?? DEPLOYED.rpcUrl));
   }
   return _transport;
 }
 
-function getAccount() {
+async function getAccount() {
   if (!_account && process.env.PRIVATE_KEY) {
-    _account = privateKeyToAccount(`0x${process.env.PRIVATE_KEY.replace(/^0x/, "")}`);
+    const v = await getViem();
+    _account = v.privateKeyToAccount(`0x${process.env.PRIVATE_KEY.replace(/^0x/, "")}`);
   }
   return _account;
 }
 
-function getWalletClient() {
-  if (!_walletClient && getAccount()) {
-    const transport = getTransport();
-    _walletClient = createWalletClient({
-      account: getAccount(),
+async function getWalletClient() {
+  if (!_walletClient && process.env.PRIVATE_KEY) {
+    const transport = await getTransport();
+    const v = await getViem();
+    _walletClient = v.createWalletClient({
+      account: await getAccount(),
       chain: { id: DEPLOYED.chainId, name: "Mantle Sepolia", rpcUrls: { default: { http: [process.env.MANTLE_RPC_URL ?? DEPLOYED.rpcUrl] } }, nativeCurrency: { name: "MNT", symbol: "MNT", decimals: 18 } },
       transport
     });
@@ -159,10 +171,11 @@ function getWalletClient() {
   return _walletClient;
 }
 
-function getPublicClient() {
+async function getPublicClient() {
   if (!_publicClient) {
-    const transport = getTransport();
-    _publicClient = createPublicClient({
+    const transport = await getTransport();
+    const v = await getViem();
+    _publicClient = v.createPublicClient({
       chain: { id: DEPLOYED.chainId, name: "Mantle Sepolia", rpcUrls: { default: { http: [process.env.MANTLE_RPC_URL ?? DEPLOYED.rpcUrl] } }, nativeCurrency: { name: "MNT", symbol: "MNT", decimals: 18 } },
       transport
     });
@@ -180,7 +193,7 @@ async function tryRead(promise) {
 
 async function waitForTx(txHash) {
   try {
-    const publicClient = getPublicClient();
+    const publicClient = await getPublicClient();
     await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60000 });
   } catch (err) {
     console.warn("waitForTx failed:", err.message);
@@ -190,7 +203,7 @@ async function waitForTx(txHash) {
 export async function ensureAgentRegistered(backendAgentId, agentName, strategyType) {
   if (!hasEnv()) return null;
   try {
-    const publicClient = getPublicClient();
+    const publicClient = await getPublicClient();
     const agentId = BigInt(backendAgentId);
     const owner = await tryRead(publicClient.readContract({
       address: DEPLOYED.agentPassport,
@@ -200,12 +213,13 @@ export async function ensureAgentRegistered(backendAgentId, agentName, strategyT
     }));
     if (owner) return agentId;
 
-    const walletClient = getWalletClient();
+    const walletClient = await getWalletClient();
     if (!walletClient) return null;
 
     const metadataURI = `ipfs://credora/${agentName.toLowerCase().replace(/\s+/g, "-")}`;
-    const strategyHash = keccak256(stringToHex(strategyType));
-    const account = getAccount();
+    const v = await getViem();
+    const strategyHash = v.keccak256(v.stringToHex(strategyType));
+    const account = await getAccount();
 
     const txHash = await walletClient.writeContract({
       address: DEPLOYED.agentPassport,
@@ -227,11 +241,11 @@ export async function ensureAgentRegistered(backendAgentId, agentName, strategyT
 export async function submitDecisionOnChain(decision, agent) {
   if (!hasEnv()) return null;
   try {
-    const walletClient = getWalletClient();
+    const walletClient = await getWalletClient();
     if (!walletClient) return null;
 
     const agentId = BigInt(decision.agentId);
-    const account = getAccount();
+    const account = await getAccount();
 
     const txHash = await walletClient.writeContract({
       address: DEPLOYED.decisionLogger,
@@ -240,7 +254,7 @@ export async function submitDecisionOnChain(decision, agent) {
       args: [
         agentId,
         BigInt(SEASON_ID),
-        marketHash(decision.market),
+        await marketHash(decision.market),
         ACTION_MAP[decision.action] ?? 2,
         decision.confidence,
         decision.riskScore,
@@ -252,7 +266,7 @@ export async function submitDecisionOnChain(decision, agent) {
       account
     });
 
-    const publicClient = getPublicClient();
+    const publicClient = await getPublicClient();
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
     const onChainDecisionId = receipt.logs?.[0]?.topics?.[1]
       ? BigInt(receipt.logs[0].topics[1])
@@ -277,10 +291,10 @@ export async function submitDecisionOnChain(decision, agent) {
 export async function submitOutcomeOnChain(onChainDecisionId, agentId, outcome) {
   if (!hasEnv()) return null;
   try {
-    const walletClient = getWalletClient();
+    const walletClient = await getWalletClient();
     if (!walletClient) return null;
 
-    const account = getAccount();
+    const account = await getAccount();
     const status = OUTCOME_MAP[outcome.status] ?? 3;
 
     const txHash = await walletClient.writeContract({
@@ -319,10 +333,10 @@ export function getExplorerUrl(txHash) {
 export async function submitSeasonScoreOnChain(agentId, agentName, scoreData) {
   if (!hasEnv()) return null;
   try {
-    const walletClient = getWalletClient();
+    const walletClient = await getWalletClient();
     if (!walletClient) return null;
 
-    const account = getAccount();
+    const account = await getAccount();
     const finalScore = Math.round(scoreData.credoraScore * 100);
 
     const txHash = await walletClient.writeContract({

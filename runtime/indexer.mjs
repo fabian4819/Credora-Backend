@@ -1,4 +1,21 @@
-import { createPublicClient, http, parseAbiItem } from "viem";
+let _viem = null;
+async function getViem() {
+  if (!_viem) _viem = await import("viem");
+  return _viem;
+}
+
+let _parsed = null;
+async function getEvents() {
+  if (!_parsed) {
+    const v = await getViem();
+    _parsed = {
+      decision: v.parseAbiItem("event DecisionSubmitted(uint256 indexed decisionId, uint256 indexed agentId, uint256 indexed seasonId, bytes32 marketHash, uint8 action, uint16 confidence, uint16 riskScore, uint64 targetWindowSeconds, bytes32 dataHash, bytes32 rationaleHash, string evidenceURI)"),
+      outcome: v.parseAbiItem("event OutcomeSubmitted(uint256 indexed outcomeId, uint256 indexed decisionId, uint256 indexed agentId, uint256 seasonId, uint8 status, int256 roiBps, uint16 confidenceCalibration, bytes32 metricsHash, string evidenceURI)"),
+      agent: v.parseAbiItem("event AgentRegistered(uint256 indexed agentId, address indexed owner, address indexed operator, string name, string strategyType, string metadataURI, bytes32 strategyHash)")
+    };
+  }
+  return _parsed;
+}
 
 const DEPLOYED = {
   agentPassport: "0x40A9cB62D2a02189be10eC4657ae02B2c235174e",
@@ -10,23 +27,10 @@ const DEPLOYED = {
 };
 
 const CHAIN = {
-  id: DEPLOYED.chainId,
-  name: "Mantle Sepolia",
-  rpcUrls: { default: { http: [process.env.MANTLE_RPC_URL ?? DEPLOYED.rpcUrl] } },
+  id: 5003, name: "Mantle Sepolia",
+  rpcUrls: { default: { http: ["https://rpc.sepolia.mantle.xyz"] } },
   nativeCurrency: { name: "MNT", symbol: "MNT", decimals: 18 }
 };
-
-const DECISION_SUBMITTED = parseAbiItem(
-  "event DecisionSubmitted(uint256 indexed decisionId, uint256 indexed agentId, uint256 indexed seasonId, bytes32 marketHash, uint8 action, uint16 confidence, uint16 riskScore, uint64 targetWindowSeconds, bytes32 dataHash, bytes32 rationaleHash, string evidenceURI)"
-);
-
-const OUTCOME_SUBMITTED = parseAbiItem(
-  "event OutcomeSubmitted(uint256 indexed outcomeId, uint256 indexed decisionId, uint256 indexed agentId, uint256 seasonId, uint8 status, int256 roiBps, uint16 confidenceCalibration, bytes32 metricsHash, string evidenceURI)"
-);
-
-const AGENT_REGISTERED = parseAbiItem(
-  "event AgentRegistered(uint256 indexed agentId, address indexed owner, address indexed operator, string name, string strategyType, string metadataURI, bytes32 strategyHash)"
-);
 
 const ACTION_MAP = ["LONG", "SHORT", "HOLD", "ALERT"];
 const OUTCOME_MAP = ["pending", "success", "failed", "neutral", "inconclusive"];
@@ -37,52 +41,42 @@ let _seenOutcomeIds = new Set();
 let _seenAgentIds = new Set();
 let _lastBlock = 0n;
 
-function getClient() {
+async function getClient() {
   if (!_client) {
-    _client = createPublicClient({ chain: CHAIN, transport: http(process.env.MANTLE_RPC_URL ?? DEPLOYED.rpcUrl) });
+    const v = await getViem();
+    _client = v.createPublicClient({
+      chain: CHAIN,
+      transport: v.http(process.env.MANTLE_RPC_URL ?? DEPLOYED.rpcUrl)
+    });
   }
   return _client;
 }
 
 async function getLatestBlock() {
-  const client = getClient();
   try {
-    return await client.getBlockNumber();
+    return await (await getClient()).getBlockNumber();
   } catch (_) {
     return _lastBlock;
   }
 }
 
 async function fetchLogs(fromBlock, toBlock, address, event) {
-  const client = getClient();
   try {
-    return await client.getLogs({ address, event, fromBlock, toBlock });
+    return await (await getClient()).getLogs({ address, event, fromBlock, toBlock });
   } catch (err) {
-    console.warn(`indexer: log fetch failed (${fromBlock}-${toBlock}):`, err.message);
+    console.warn(`indexer: fetchLogs failed (${fromBlock}-${toBlock}):`, err.message);
     return [];
   }
 }
 
-async function processAgentRegistered(logs, season, agents) {
+async function processAgentRegistered(logs, agents) {
   for (const log of logs) {
     const { agentId, name, strategyType } = log.args;
     const id = String(agentId);
     if (_seenAgentIds.has(id)) continue;
     _seenAgentIds.add(id);
-
-    const existing = agents.find((a) => a.id === id);
-    if (!existing) {
-      agents.push({
-        id,
-        name,
-        source: "onchain",
-        strategyType,
-        tradingPlatform: "DEX",
-        riskProfile: "medium",
-        supportedMarkets: [],
-        onChainAgentId: Number(agentId),
-        indexedAt: new Date().toISOString()
-      });
+    if (!agents.find((a) => a.id === id)) {
+      agents.push({ id, name, source: "onchain", strategyType, tradingPlatform: "DEX", riskProfile: "medium", supportedMarkets: [] });
       console.log(`indexer: new on-chain agent #${agentId} "${name}"`);
     }
   }
@@ -91,35 +85,22 @@ async function processAgentRegistered(logs, season, agents) {
 async function processDecisionSubmitted(logs, decisions, agents) {
   const now = new Date().toISOString();
   for (const log of logs) {
-    const { decisionId, agentId, seasonId, action, confidence, riskScore, targetWindowSeconds, dataHash, rationaleHash, evidenceURI } = log.args;
+    const { decisionId, agentId, action, confidence, riskScore, targetWindowSeconds, dataHash, rationaleHash, evidenceURI } = log.args;
     const dId = String(decisionId);
     if (_seenDecisionIds.has(dId)) continue;
     _seenDecisionIds.add(dId);
-
     const backendId = `${agentId}-onchain-${decisionId}`;
-    const existing = decisions.find((d) => d.id === backendId);
-    if (!existing) {
-      const agent = agents.find((a) => a.id === String(agentId)) || agents.find((a) => a.onChainAgentId === Number(agentId));
+    if (!decisions.find((d) => d.id === backendId)) {
       decisions.push({
-        id: backendId,
-        agentId: String(agentId),
-        seasonId: `season-${seasonId}`,
-        market: "onchain",
-        action: ACTION_MAP[action] ?? "HOLD",
-        entryPrice: 0,
-        targetWindowHours: Math.round(Number(targetWindowSeconds) / 3600),
-        confidence: Number(confidence),
-        riskScore: Number(riskScore),
-        rationale: "Indexed from on-chain DecisionSubmitted event",
-        dataHash: dataHash,
-        rationaleHash: rationaleHash,
-        evidenceUri: evidenceURI,
-        submittedAt: now,
+        id: backendId, agentId: String(agentId), seasonId: "season-1",
+        market: "onchain", action: ACTION_MAP[action] ?? "HOLD",
+        entryPrice: 0, targetWindowHours: Math.round(Number(targetWindowSeconds) / 3600),
+        confidence: Number(confidence), riskScore: Number(riskScore),
+        rationale: "Indexed from on-chain event",
+        dataHash, rationaleHash, evidenceUri: evidenceURI, submittedAt: now,
         onChainTxHash: log.transactionHash,
         onChainExplorerUrl: `${DEPLOYED.explorerUrl}/tx/${log.transactionHash}`,
-        onChainDecisionId: Number(decisionId),
-        indexedFromChain: true,
-        createdAt: now
+        onChainDecisionId: Number(decisionId), indexedFromChain: true, createdAt: now
       });
       console.log(`indexer: new on-chain decision #${decisionId} (agent #${agentId})`);
     }
@@ -129,29 +110,21 @@ async function processDecisionSubmitted(logs, decisions, agents) {
 async function processOutcomeSubmitted(logs, outcomes) {
   const now = new Date().toISOString();
   for (const log of logs) {
-    const { outcomeId, decisionId, agentId, seasonId, status, roiBps, confidenceCalibration, metricsHash, evidenceURI } = log.args;
+    const { outcomeId, decisionId, agentId, status, roiBps, confidenceCalibration, metricsHash, evidenceURI } = log.args;
     const oId = String(outcomeId);
     if (_seenOutcomeIds.has(oId)) continue;
     _seenOutcomeIds.add(oId);
-
     const backendDecisionId = `${agentId}-onchain-${decisionId}`;
-    const existing = outcomes.find((o) => o.decisionId === backendDecisionId);
-    if (!existing) {
+    if (!outcomes.find((o) => o.decisionId === backendDecisionId)) {
       outcomes.push({
-        decisionId: backendDecisionId,
-        agentId: String(agentId),
-        seasonId: `season-${seasonId}`,
+        decisionId: backendDecisionId, agentId: String(agentId), seasonId: "season-1",
         status: OUTCOME_MAP[status] ?? "neutral",
-        priceBefore: 0,
-        priceAfter: 0,
-        roiBps: Number(roiBps),
+        priceBefore: 0, priceAfter: 0, roiBps: Number(roiBps),
         confidenceCalibration: Number(confidenceCalibration),
-        metricsHash,
-        evidenceUri: evidenceURI,
+        metricsHash, evidenceUri: evidenceURI,
         onChainTxHash: log.transactionHash,
         onChainExplorerUrl: `${DEPLOYED.explorerUrl}/tx/${log.transactionHash}`,
-        indexedFromChain: true,
-        createdAt: now
+        indexedFromChain: true, createdAt: now
       });
       console.log(`indexer: new on-chain outcome #${outcomeId} for decision #${decisionId}`);
     }
@@ -165,23 +138,21 @@ export function hasEnv() {
 export async function indexOnce(season, agents, decisions, outcomes) {
   if (!hasEnv()) return { indexed: false, reason: "no RPC" };
   try {
+    const events = await getEvents();
     const latest = await getLatestBlock();
-    if (_lastBlock === 0n) {
-      _lastBlock = latest - 5000n;
-      if (_lastBlock < 0n) _lastBlock = 0n;
-    }
+    if (_lastBlock === 0n) { _lastBlock = latest - 5000n; if (_lastBlock < 0n) _lastBlock = 0n; }
     if (_lastBlock >= latest) return { indexed: false, reason: "no new blocks" };
 
     const fromBlock = _lastBlock + 1n;
     const toBlock = latest;
 
     const [agentLogs, decisionLogs, outcomeLogs] = await Promise.all([
-      fetchLogs(fromBlock, toBlock, DEPLOYED.agentPassport, AGENT_REGISTERED),
-      fetchLogs(fromBlock, toBlock, DEPLOYED.decisionLogger, DECISION_SUBMITTED),
-      fetchLogs(fromBlock, toBlock, DEPLOYED.outcomeRegistry, OUTCOME_SUBMITTED)
+      fetchLogs(fromBlock, toBlock, DEPLOYED.agentPassport, events.agent),
+      fetchLogs(fromBlock, toBlock, DEPLOYED.decisionLogger, events.decision),
+      fetchLogs(fromBlock, toBlock, DEPLOYED.outcomeRegistry, events.outcome)
     ]);
 
-    await processAgentRegistered(agentLogs, season, agents);
+    await processAgentRegistered(agentLogs, agents);
     await processDecisionSubmitted(decisionLogs, decisions, agents);
     await processOutcomeSubmitted(outcomeLogs, outcomes);
 
@@ -196,17 +167,9 @@ export async function indexOnce(season, agents, decisions, outcomes) {
 }
 
 export function startIndexer({ season, agents, decisions, outcomes, intervalMs = 15000 }) {
-  if (!hasEnv()) {
-    console.log("indexer: RPC not configured, skipping");
-    return () => {};
-  }
+  if (!hasEnv()) { console.log("indexer: RPC not configured, skipping"); return () => {}; }
   console.log("indexer: started, polling every", intervalMs / 1000, "s");
-
-  const timer = setInterval(() => {
-    indexOnce(season, agents, decisions, outcomes).catch(() => {});
-  }, intervalMs);
-
+  const timer = setInterval(() => indexOnce(season, agents, decisions, outcomes).catch(() => {}), intervalMs);
   indexOnce(season, agents, decisions, outcomes).catch(() => {});
-
   return () => clearInterval(timer);
 }
