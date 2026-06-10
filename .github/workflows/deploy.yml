@@ -19,9 +19,11 @@ jobs:
           script: |
             set -e
             cd ~/Credora-Backend
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             docker compose build --no-cache
             docker compose down 2>/dev/null || true
+            sleep 3
             docker compose up -d --force-recreate
             docker image prune -f 2>/dev/null || true
             echo "Deploy complete: $(date)"
