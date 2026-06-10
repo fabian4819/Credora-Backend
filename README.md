@@ -33,6 +33,11 @@ vercel
 
 or connect the GitHub repo to Vercel and deploy the `main` branch.
 
+If deploying from a monorepo, set the Vercel project Root Directory to `backend`.
+The serverless function must be deployed from the folder that contains `api/[...route].js`
+and `package.json`; otherwise Vercel can continue serving an older API build where newer
+routes return `Route not found`.
+
 No build command is required for the current MVP. Runtime is plain Node.js.
 
 Required Vercel environment variables:
@@ -50,11 +55,13 @@ The API automatically seeds the demo season, agents, decisions, outcomes, and le
 
 ```txt
 GET  /api/health
+GET  /api/status
 GET  /api/season/current
 GET  /api/agents
 GET  /api/decisions
 GET  /api/outcomes
 GET  /api/leaderboard
+GET  /api/stream/leaderboard
 GET  /api/proof/:decisionId
 GET  /api/sources
 GET  /api/strategy-accounts

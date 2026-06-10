@@ -35,8 +35,26 @@ function ensureSeeded() {
   _seeded.done = true;
 }
 
+function setCors(res) {
+  res.setHeader("access-control-allow-origin", "*");
+  res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+  res.setHeader("access-control-allow-headers", "Content-Type");
+}
+
 function send(res, status, body) {
+  setCors(res);
   res.status(status).json(body);
+}
+
+function sendSse(res, body) {
+  setCors(res);
+  res.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache, no-transform",
+    connection: "keep-alive"
+  });
+  res.write(": connected\n\n");
+  res.write(`data: ${JSON.stringify(body)}\n\n`);
 }
 
 async function getReadyDb() {
@@ -56,6 +74,11 @@ export default async function handler(req, res) {
   const path = `/${route.join("/")}`;
 
   try {
+    if (req.method === "OPTIONS") {
+      setCors(res);
+      return res.status(204).end();
+    }
+
     const db = await getReadyDb();
 
     if (req.method === "GET" && path === "/health") {
@@ -161,6 +184,31 @@ export default async function handler(req, res) {
 
     if (req.method === "GET" && path === "/sources") {
       return send(res, 200, { sources: dataSources });
+    }
+
+    if (req.method === "GET" && path === "/stream/leaderboard") {
+      const rows = db
+        ? await db
+            .collection("leaderboard_snapshots")
+            .find({ seasonId: season.id }, { projection: { _id: 0 } })
+            .sort({ computedAt: -1 })
+            .limit(1)
+            .next()
+        : undefined;
+      const currentLeaderboard = rows?.leaderboard ?? leaderboard();
+
+      sendSse(res, { season, leaderboard: currentLeaderboard, timestamp: Date.now() });
+
+      const heartbeat = setInterval(() => {
+        res.write(`data: ${JSON.stringify({ season, leaderboard: currentLeaderboard, timestamp: Date.now() })}\n\n`);
+      }, 5000);
+
+      req.on?.("close", () => clearInterval(heartbeat));
+      setTimeout(() => {
+        clearInterval(heartbeat);
+        res.end();
+      }, 25000);
+      return;
     }
 
     if (req.method === "GET" && path === "/strategy-accounts") {
