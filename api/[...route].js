@@ -45,7 +45,7 @@ async function getReadyDb() {
     if (!db) return undefined;
     await seedMongoIfEmpty({ agents, season, decisions, outcomes, leaderboard: leaderboard(), strategyAccounts });
     return db;
-  } catch {
+  } catch (_) {
     return undefined;
   }
 }
@@ -68,11 +68,6 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "GET" && path === "/status") {
-      let bridgeMode = "simulated";
-      try {
-        const bridge = await import("../runtime/bridge.mjs");
-        bridgeMode = bridge.getDataMode();
-      } catch {}
       return send(res, 200, {
         ok: true,
         service: "credora-backend",
@@ -81,7 +76,7 @@ export default async function handler(req, res) {
         livePrices: hasLivePrices(),
         chainIndexer: Boolean(process.env.MANTLE_RPC_URL),
         bridgeActive: true,
-        bridgeDataMode: bridgeMode,
+        bridgeDataMode: "check_api_status_flag",
         chainId: 5003,
         mantleExplorer: "https://explorer.sepolia.mantle.xyz",
         contracts: {
