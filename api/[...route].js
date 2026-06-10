@@ -74,10 +74,19 @@ function normalizeRouteParam(value) {
   return [];
 }
 
+function getRequestPath(req) {
+  const route = normalizeRouteParam(req.query?.route);
+  if (route.length) return `/${route.join("/")}`;
+
+  const url = new URL(req.url ?? "/", "https://credora.local");
+  if (url.pathname === "/.well-known/credora-agent.json") return "/discovery";
+  if (url.pathname.startsWith("/api/")) return url.pathname.slice("/api".length);
+  return url.pathname;
+}
+
 export default async function handler(req, res) {
   ensureSeeded();
-  const route = normalizeRouteParam(req.query.route);
-  const path = `/${route.join("/")}`;
+  const path = getRequestPath(req);
 
   try {
     if (req.method === "OPTIONS") {
@@ -98,7 +107,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "GET" && path === "/debug") {
-      return send(res, 200, { path, route, method: req.method });
+      return send(res, 200, { path, query: req.query, url: req.url, method: req.method });
     }
 
     if (req.method === "GET" && path === "/status") {

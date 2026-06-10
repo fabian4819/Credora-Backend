@@ -2,14 +2,18 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/**/*.js",
+      "src": "api/[...route].js",
       "use": "@vercel/node"
     }
   ],
-  "rewrites": [
+  "routes": [
     {
-      "source": "/.well-known/credora-agent.json",
-      "destination": "/api/discovery"
+      "src": "/\\.well-known/credora-agent\\.json",
+      "dest": "/api/[...route].js"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/[...route].js"
     }
   ]
 }
