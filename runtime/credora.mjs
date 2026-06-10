@@ -230,12 +230,12 @@ export function scoreTrackRecord(record) {
   }[record.accountType] ?? 0.7;
 
   const credoraScore =
-    roiScore * 0.28 +
-    winRateScore * 0.2 +
-    riskScore * 0.2 +
+    roiScore * 0.25 +
+    winRateScore * 0.20 +
+    riskScore * 0.20 +
     consistencyScore * 0.17 +
-    sampleSizeScore * 0.1 +
-    sourceCredibility * 0.05;
+    sampleSizeScore * 0.10 +
+    sourceCredibility * 0.08;
 
   return Math.round(credoraScore * 10000) / 100;
 }
@@ -432,7 +432,11 @@ export function leaderboard() {
     const consistency = total <= 1 ? accuracy : Math.max(0, accuracy - failures / total / 2);
     const roiScore = Math.max(0, Math.min(1, (roiPct + 10) / 20));
     const riskScore = Math.max(0, 1 - avgRisk / 100);
-    const credoraScore = Math.round((accuracy * 0.35 + roiScore * 0.25 + consistency * 0.2 + riskScore * 0.2) * 10000) / 100;
+    const winRate = successes / total;
+    const verifiedDecisionsScore = Math.min(1, total / 20);
+    const credoraScore = Math.round(
+      (accuracy * 0.30 + roiScore * 0.25 + consistency * 0.20 + riskScore * 0.15 + verifiedDecisionsScore * 0.10) * 10000
+    ) / 100;
     return {
       agentId: agent.id,
       agentName: agent.name,
@@ -441,10 +445,18 @@ export function leaderboard() {
       verificationLevel: "demo_generated",
       decisions: agentDecisions.length,
       accuracy: Math.round(accuracy * 10000) / 100,
+      winRate: Math.round(winRate * 10000) / 100,
       roiPct: Math.round(roiPct * 100) / 100,
       consistency: Math.round(consistency * 10000) / 100,
       avgRisk: Math.round(avgRisk * 100) / 100,
-      credoraScore
+      credoraScore,
+      scoreBreakdown: {
+        accuracy: Math.round(accuracy * 10000) / 100,
+        roi: Math.round(roiScore * 10000) / 100,
+        consistency: Math.round(consistency * 10000) / 100,
+        riskMgmt: Math.round(riskScore * 10000) / 100,
+        verification: Math.round(verifiedDecisionsScore * 10000) / 100
+      }
     };
   });
 
@@ -458,6 +470,7 @@ export function leaderboard() {
     markets: record.markets,
     decisions: record.metrics.tradeCount,
     accuracy: Math.round(record.metrics.winRatePct * 100) / 100,
+    winRate: Math.round(record.metrics.winRatePct * 100) / 100,
     roiPct: Math.round(record.metrics.roiPct * 100) / 100,
     consistency: Math.round(record.metrics.consistencyPct * 100) / 100,
     avgRisk: Math.round(record.metrics.maxDrawdownPct * 100) / 100,

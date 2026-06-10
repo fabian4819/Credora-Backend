@@ -101,13 +101,8 @@ export default async function handler(req, res) {
         ok: true,
         service: "credora-backend",
         season: season.id,
-        database: db ? "mongodb" : "memory",
-        version: "2.2-debug"
+        database: db ? "mongodb" : "memory"
       });
-    }
-
-    if (req.method === "GET" && path === "/debug") {
-      return send(res, 200, { path, query: req.query, url: req.url, method: req.method });
     }
 
     if (req.method === "GET" && path === "/status") {
@@ -119,7 +114,8 @@ export default async function handler(req, res) {
         livePrices: hasLivePrices(),
         chainIndexer: Boolean(process.env.MANTLE_RPC_URL),
         bridgeActive: true,
-        bridgeDataMode: "check_api_status_flag",
+        bridgeDataMode: Boolean(process.env.BYBIT_API_KEY) ? "configured" : "not_configured",
+        onChainWrites: Boolean(process.env.PRIVATE_KEY && process.env.MANTLE_RPC_URL),
         chainId: 5003,
         mantleExplorer: "https://explorer.sepolia.mantle.xyz",
         contracts: {
@@ -168,6 +164,7 @@ export default async function handler(req, res) {
           markets: record.markets,
           decisions: record.metrics?.tradeCount ?? 0,
           accuracy: record.metrics?.winRatePct ?? 0,
+          winRate: record.metrics?.winRatePct ?? 0,
           roiPct: record.metrics?.roiPct ?? 0,
           consistency: record.metrics?.consistencyPct ?? 0,
           avgRisk: record.metrics?.maxDrawdownPct ?? 0,
