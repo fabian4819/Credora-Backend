@@ -74,18 +74,22 @@ async function getLatestBlock() {
 }
 
 async function fetchLogs(fromBlock, toBlock, address, event) {
-  const MAX_RANGE = 10000n;
   const results = [];
   let start = fromBlock;
   while (start < toBlock) {
-    const end = start + MAX_RANGE > toBlock ? toBlock : start + MAX_RANGE;
-    try {
-      const batch = await (await getClient()).getLogs({ address, event, fromBlock: start, toBlock: end });
-      results.push(...batch);
-    } catch (err) {
-      return results;
+    const end = start + 10000n > toBlock ? toBlock : start + 10000n;
+    let success = false;
+    for (let attempt = 0; attempt < 3 && !success; attempt++) {
+      try {
+        const batch = await (await getClient()).getLogs({ address, event, fromBlock: start, toBlock: end });
+        results.push(...batch);
+        success = true;
+      } catch (_) {
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
+      }
     }
     start = end;
+    await new Promise((r) => setTimeout(r, 200));
   }
   return results;
 }
@@ -176,7 +180,7 @@ export async function indexOnce(season, agents, decisions, outcomes) {
   try {
     const events = await getEvents();
     const latest = await getLatestBlock();
-    if (_lastBlock === 0n) { _lastBlock = latest - 100000n; if (_lastBlock < 0n) _lastBlock = 0n; }
+    if (_lastBlock === 0n) { _lastBlock = latest - 100000n; if (_lastBlock < 0n) _lastBlock = 0n; console.log(`indexer: initial scan from block ${_lastBlock} to ${latest}`); }
     if (_lastBlock >= latest) return { indexed: false, reason: "no new blocks" };
 
     const fromBlock = _lastBlock + 1n;
