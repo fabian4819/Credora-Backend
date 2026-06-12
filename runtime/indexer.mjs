@@ -74,12 +74,20 @@ async function getLatestBlock() {
 }
 
 async function fetchLogs(fromBlock, toBlock, address, event) {
-  try {
-    return await (await getClient()).getLogs({ address, event, fromBlock, toBlock });
-  } catch (err) {
-    console.warn(`indexer: fetchLogs failed (${fromBlock}-${toBlock}):`, err.message);
-    return [];
+  const MAX_RANGE = 10000n;
+  const results = [];
+  let start = fromBlock;
+  while (start < toBlock) {
+    const end = start + MAX_RANGE > toBlock ? toBlock : start + MAX_RANGE;
+    try {
+      const batch = await (await getClient()).getLogs({ address, event, fromBlock: start, toBlock: end });
+      results.push(...batch);
+    } catch (err) {
+      return results;
+    }
+    start = end;
   }
+  return results;
 }
 
 async function processAgentRegistered(logs, agents) {
