@@ -168,7 +168,7 @@ export async function indexOnce(season, agents, decisions, outcomes) {
   try {
     const events = await getEvents();
     const latest = await getLatestBlock();
-    if (_lastBlock === 0n) { _lastBlock = latest - 5000n; if (_lastBlock < 0n) _lastBlock = 0n; }
+    if (_lastBlock === 0n) { _lastBlock = latest - 100000n; if (_lastBlock < 0n) _lastBlock = 0n; }
     if (_lastBlock >= latest) return { indexed: false, reason: "no new blocks" };
 
     const fromBlock = _lastBlock + 1n;
