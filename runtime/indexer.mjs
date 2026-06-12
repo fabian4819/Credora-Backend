@@ -1,4 +1,17 @@
 let _viem = null;
+let _db = null;
+
+async function getDb() {
+  if (_db) return _db;
+  try {
+    const mod = await import("./db.mjs");
+    _db = await mod.getDb();
+    return _db;
+  } catch {
+    return null;
+  }
+}
+
 async function getViem() {
   if (!_viem) _viem = await import("viem");
   return _viem;
@@ -76,7 +89,12 @@ async function processAgentRegistered(logs, agents) {
     if (_seenAgentIds.has(id)) continue;
     _seenAgentIds.add(id);
     if (!agents.find((a) => a.id === id)) {
-      agents.push({ id, name, source: "onchain", strategyType, tradingPlatform: "DEX", riskProfile: "medium", supportedMarkets: [] });
+      const record = { id, name, source: "onchain", strategyType, tradingPlatform: "DEX", riskProfile: "medium", supportedMarkets: [], onChainAgentId: Number(agentId), indexedAt: new Date().toISOString() };
+      agents.push(record);
+      const db = await getDb();
+      if (db) {
+        await db.collection("agents").updateOne({ id }, { $setOnInsert: { ...record, createdAt: new Date() } }, { upsert: true }).catch(() => {});
+      }
       console.log(`indexer: new on-chain agent #${agentId} "${name}"`);
     }
   }
@@ -91,7 +109,7 @@ async function processDecisionSubmitted(logs, decisions, agents) {
     _seenDecisionIds.add(dId);
     const backendId = `${agentId}-onchain-${decisionId}`;
     if (!decisions.find((d) => d.id === backendId)) {
-      decisions.push({
+      const record = {
         id: backendId, agentId: String(agentId), seasonId: "season-1",
         market: "onchain", action: ACTION_MAP[action] ?? "HOLD",
         entryPrice: 0, targetWindowHours: Math.round(Number(targetWindowSeconds) / 3600),
@@ -101,7 +119,12 @@ async function processDecisionSubmitted(logs, decisions, agents) {
         onChainTxHash: log.transactionHash,
         onChainExplorerUrl: `${DEPLOYED.explorerUrl}/tx/${log.transactionHash}`,
         onChainDecisionId: Number(decisionId), indexedFromChain: true, createdAt: now
-      });
+      };
+      decisions.push(record);
+      const db = await getDb();
+      if (db) {
+        await db.collection("decisions").updateOne({ id: backendId }, { $setOnInsert: { ...record, createdAt: new Date() } }, { upsert: true }).catch(() => {});
+      }
       console.log(`indexer: new on-chain decision #${decisionId} (agent #${agentId})`);
     }
   }
@@ -116,7 +139,7 @@ async function processOutcomeSubmitted(logs, outcomes) {
     _seenOutcomeIds.add(oId);
     const backendDecisionId = `${agentId}-onchain-${decisionId}`;
     if (!outcomes.find((o) => o.decisionId === backendDecisionId)) {
-      outcomes.push({
+      const record = {
         decisionId: backendDecisionId, agentId: String(agentId), seasonId: "season-1",
         status: OUTCOME_MAP[status] ?? "neutral",
         priceBefore: 0, priceAfter: 0, roiBps: Number(roiBps),
@@ -125,7 +148,12 @@ async function processOutcomeSubmitted(logs, outcomes) {
         onChainTxHash: log.transactionHash,
         onChainExplorerUrl: `${DEPLOYED.explorerUrl}/tx/${log.transactionHash}`,
         indexedFromChain: true, createdAt: now
-      });
+      };
+      outcomes.push(record);
+      const db = await getDb();
+      if (db) {
+        await db.collection("outcomes").updateOne({ decisionId: backendDecisionId }, { $setOnInsert: { ...record, createdAt: new Date() } }, { upsert: true }).catch(() => {});
+      }
       console.log(`indexer: new on-chain outcome #${outcomeId} for decision #${decisionId}`);
     }
   }
@@ -156,9 +184,21 @@ export async function indexOnce(season, agents, decisions, outcomes) {
     await processDecisionSubmitted(decisionLogs, decisions, agents);
     await processOutcomeSubmitted(outcomeLogs, outcomes);
 
-    _lastBlock = latest;
     const total = agentLogs.length + decisionLogs.length + outcomeLogs.length;
-    if (total > 0) console.log(`indexer: processed ${total} events up to block ${latest}`);
+    if (total > 0) {
+      console.log(`indexer: processed ${total} events up to block ${latest}`);
+      const db = await getDb();
+      if (db) {
+        try {
+          const leaderboardFn = (await import("./credora.mjs")).leaderboard;
+          const lb = leaderboardFn();
+          await db.collection("leaderboard_snapshots").insertOne({
+            seasonId: "season-1", leaderboard: lb, computedAt: new Date()
+          }).catch(() => {});
+        } catch (_) {}
+      }
+    }
+    _lastBlock = latest;
     return { indexed: true, events: total, block: Number(latest) };
   } catch (err) {
     console.warn("indexer: error:", err.message);
