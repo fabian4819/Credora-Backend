@@ -145,6 +145,22 @@ export default async function handler(req, res) {
       return send(res, 200, { agents: rows });
     }
 
+    if (req.method === "GET" && /^\/agents\/.+\/decisions$/.test(path)) {
+      const agentId = path.split("/")[2];
+      const rows = db
+        ? await db.collection("decisions").find({ agentId }, { projection: { _id: 0 } }).sort({ createdAt: -1 }).toArray()
+        : decisions.filter((d) => d.agentId === agentId);
+      const withOutcome = req.queryData?.withOutcome === "1";
+      if (withOutcome) {
+        const outRows = db
+          ? await db.collection("outcomes").find({}, { projection: { _id: 0 } }).toArray()
+          : outcomes;
+        const enriched = rows.map((d) => ({ ...d, outcome: outRows.find((o) => o.decisionId === d.id) ?? null }));
+        return send(res, 200, { decisions: enriched });
+      }
+      return send(res, 200, { decisions: rows });
+    }
+
     if (req.method === "GET" && path.startsWith("/agents/")) {
       const agentId = path.replace("/agents/", "");
       const agent = (db ? await db.collection("agents").findOne({ id: agentId }, { projection: { _id: 0 } }) : agents.find((a) => a.id === agentId));
